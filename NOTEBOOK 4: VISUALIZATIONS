@@ -1,0 +1,688 @@
+# =============================================================================
+# NOTEBOOK 4: VISUALIZATIONS (OPTIONAL)
+# =============================================================================
+# EEG Spectrograms and t-SNE Feature Embeddings
+# =============================================================================
+
+# %% [markdown]
+# # Optional Visualizations for EEG Person Identification
+# 
+# This notebook provides:
+# 1. EEG Signal Visualization
+# 2. Spectrogram Generation
+# 3. t-SNE Feature Embeddings
+# 4. CNN Feature Map Visualization
+
+# %% [markdown]
+# ## 1. Setup
+
+# %%
+!pip install torch torchvision -q
+!pip install scikit-learn -q
+!pip install scipy -q
+
+# %%
+import os
+import numpy as np
+import pickle
+import torch
+import torch.nn as nn
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy import signal
+from sklearn.manifold import TSNE
+from sklearn.decomposition import PCA
+from tqdm import tqdm
+import warnings
+
+warnings.filterwarnings('ignore')
+
+# Set style
+plt.style.use('seaborn-v0_8-whitegrid')
+
+# Device
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(f"Using device: {device}")
+
+# Paths
+PROCESSED_DIR = '/content/processed_data'
+MODEL_DIR = '/content/models'
+VIZ_DIR = '/content/visualizations'
+os.makedirs(VIZ_DIR, exist_ok=True)
+
+# %% [markdown]
+# ## 2. Load Data and Model
+
+# %%
+# Load preprocessed data
+X_test = np.load(os.path.join(PROCESSED_DIR, 'X_test.npy'))
+y_test = np.load(os.path.join(PROCESSED_DIR, 'y_test.npy'))
+
+with open(os.path.join(PROCESSED_DIR, 'metadata.pkl'), 'rb') as f:
+    metadata = pickle.load(f)
+
+print(f"Test data shape: {X_test.shape}")
+print(f"Number of subjects: {len(np.unique(y_test))}")
+
+# Configuration
+SAMPLING_RATE = metadata['sampling_rate']  # 160 Hz
+MOTOR_CHANNELS = metadata['motor_channels']
+N_CHANNELS = X_test.shape[1]
+N_SAMPLES = X_test.shape[2]
+
+# %%
+# Load the trained model
+class CNN_GRU_Model(nn.Module):
+    """Recreate model architecture for loading weights"""
+    
+    def __init__(self, n_channels, n_samples, n_classes, 
+                 cnn_filters=[32, 64, 128], kernel_size=7,
+                 gru_hidden=128, gru_layers=2, bidirectional=True):
+        super(CNN_GRU_Model, self).__init__()
+        
+        self.cnn_layers = nn.Sequential(
+            nn.Conv1d(n_channels, cnn_filters[0], kernel_size=kernel_size, padding='same'),
+            nn.BatchNorm1d(cnn_filters[0]),
+            nn.ReLU(),
+            nn.MaxPool1d(2),
+            nn.Conv1d(cnn_filters[0], cnn_filters[1], kernel_size=kernel_size, padding='same'),
+            nn.BatchNorm1d(cnn_filters[1]),
+            nn.ReLU(),
+            nn.MaxPool1d(2),
+            nn.Conv1d(cnn_filters[1], cnn_filters[2], kernel_size=kernel_size, padding='same'),
+            nn.BatchNorm1d(cnn_filters[2]),
+            nn.ReLU(),
+            nn.MaxPool1d(2),
+            nn.Dropout(0.3)
+        )
+        
+        self.gru = nn.GRU(
+            input_size=cnn_filters[2],
+            hidden_size=gru_hidden,
+            num_layers=gru_layers,
+            batch_first=True,
+            bidirectional=bidirectional,
+            dropout=0.3 if gru_layers > 1 else 0
+        )
+        
+        gru_output_size = gru_hidden * (2 if bidirectional else 1)
+        
+        self.classifier = nn.Sequential(
+            nn.Linear(gru_output_size, 256),
+            nn.BatchNorm1d(256),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(256, n_classes)
+        )
+        
+        self.gru_hidden = gru_hidden
+        self.bidirectional = bidirectional
+    
+    def forward(self, x):
+        cnn_out = self.cnn_layers(x)
+        gru_in = cnn_out.transpose(1, 2)
+        gru_out, hidden = self.gru(gru_in)
+        
+        if self.bidirectional:
+            final_hidden = torch.cat((hidden[-2], hidden[-1]), dim=1)
+        else:
+            final_hidden = hidden[-1]
+        
+        output = self.classifier(final_hidden)
+        return output
+    
+    def get_features(self, x):
+        """Extract features before classification layer"""
+        cnn_out = self.cnn_layers(x)
+        gru_in = cnn_out.transpose(1, 2)
+        gru_out, hidden = self.gru(gru_in)
+        
+        if self.bidirectional:
+            final_hidden = torch.cat((hidden[-2], hidden[-1]), dim=1)
+        else:
+            final_hidden = hidden[-1]
+        
+        return final_hidden
+    
+    def get_cnn_features(self, x):
+        """Extract CNN features only"""
+        return self.cnn_layers(x)
+
+# Load model
+checkpoint = torch.load(os.path.join(MODEL_DIR, 'complete_model.pt'), map_location=device)
+model_config = checkpoint['config']
+
+model = CNN_GRU_Model(
+    n_channels=model_config['n_channels'],
+    n_samples=model_config['n_samples'],
+    n_classes=model_config['n_classes'],
+    cnn_filters=model_config['cnn_filters'],
+    gru_hidden=model_config['gru_hidden_size'],
+    gru_layers=model_config['gru_num_layers'],
+    bidirectional=model_config['gru_bidirectional']
+).to(device)
+
+model.load_state_dict(checkpoint['model_state_dict'])
+model.eval()
+print("Model loaded successfully!")
+
+# %% [markdown]
+# ## 3. EEG Signal Visualization
+
+# %%
+def plot_eeg_signals(X, y, subject_ids=[0, 1, 2], channel_names=None):
+    """
+    Plot raw EEG signals for different subjects
+    """
+    print("=" * 60)
+    print("EEG SIGNAL VISUALIZATION")
+    print("=" * 60)
+    
+    n_subjects = len(subject_ids)
+    fig, axes = plt.subplots(n_subjects, 1, figsize=(14, 3*n_subjects))
+    
+    if n_subjects == 1:
+        axes = [axes]
+    
+    time = np.arange(N_SAMPLES) / SAMPLING_RATE
+    
+    for idx, subject_id in enumerate(subject_ids):
+        # Find a sample from this subject
+        sample_indices = np.where(y == subject_id)[0]
+        if len(sample_indices) == 0:
+            continue
+        
+        sample_idx = sample_indices[0]
+        eeg_data = X[sample_idx]
+        
+        # Plot each channel with offset
+        for ch in range(min(N_CHANNELS, 10)):  # Plot max 10 channels
+            offset = ch * 3  # Vertical offset
+            axes[idx].plot(time, eeg_data[ch] + offset, linewidth=0.8, 
+                          label=MOTOR_CHANNELS[ch] if channel_names else f'Ch{ch}')
+        
+        axes[idx].set_title(f'Subject {subject_id + 1} - EEG Segment', fontsize=12)
+        axes[idx].set_xlabel('Time (s)')
+        axes[idx].set_ylabel('Amplitude (normalized)')
+        axes[idx].set_xlim([0, time[-1]])
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(VIZ_DIR, 'eeg_signals.png'), dpi=150, bbox_inches='tight')
+    plt.show()
+    
+    print(f"Plot saved to {VIZ_DIR}/eeg_signals.png")
+
+# Plot EEG signals for 3 different subjects
+plot_eeg_signals(X_test, y_test, subject_ids=[0, 50, 100], channel_names=MOTOR_CHANNELS)
+
+# %% [markdown]
+# ## 4. Spectrogram Visualization
+
+# %%
+def compute_spectrogram(signal_data, fs, nperseg=64, noverlap=48):
+    """
+    Compute spectrogram using Short-Time Fourier Transform
+    """
+    f, t, Sxx = signal.spectrogram(signal_data, fs=fs, 
+                                    nperseg=nperseg, noverlap=noverlap)
+    return f, t, Sxx
+
+def plot_spectrograms(X, y, subject_ids=[0, 1, 2], channel_idx=5):
+    """
+    Plot spectrograms for EEG segments from different subjects
+    """
+    print("\n" + "=" * 60)
+    print("SPECTROGRAM VISUALIZATION")
+    print("=" * 60)
+    
+    n_subjects = len(subject_ids)
+    fig, axes = plt.subplots(n_subjects, 2, figsize=(14, 4*n_subjects))
+    
+    if n_subjects == 1:
+        axes = axes.reshape(1, -1)
+    
+    for idx, subject_id in enumerate(subject_ids):
+        # Find a sample from this subject
+        sample_indices = np.where(y == subject_id)[0]
+        if len(sample_indices) == 0:
+            continue
+        
+        sample_idx = sample_indices[0]
+        eeg_segment = X[sample_idx, channel_idx, :]
+        
+        # Compute spectrogram
+        f, t, Sxx = compute_spectrogram(eeg_segment, SAMPLING_RATE)
+        
+        # Plot raw signal
+        time = np.arange(len(eeg_segment)) / SAMPLING_RATE
+        axes[idx, 0].plot(time, eeg_segment, 'b-', linewidth=1)
+        axes[idx, 0].set_title(f'Subject {subject_id+1} - Raw EEG (Channel: {MOTOR_CHANNELS[channel_idx]})')
+        axes[idx, 0].set_xlabel('Time (s)')
+        axes[idx, 0].set_ylabel('Amplitude')
+        
+        # Plot spectrogram
+        im = axes[idx, 1].pcolormesh(t, f, 10 * np.log10(Sxx + 1e-10), 
+                                      shading='gouraud', cmap='viridis')
+        axes[idx, 1].set_title(f'Subject {subject_id+1} - Spectrogram')
+        axes[idx, 1].set_xlabel('Time (s)')
+        axes[idx, 1].set_ylabel('Frequency (Hz)')
+        axes[idx, 1].set_ylim([0, 50])  # Focus on relevant frequencies
+        plt.colorbar(im, ax=axes[idx, 1], label='Power (dB)')
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(VIZ_DIR, 'spectrograms.png'), dpi=150, bbox_inches='tight')
+    plt.show()
+    
+    print(f"Plot saved to {VIZ_DIR}/spectrograms.png")
+
+plot_spectrograms(X_test, y_test, subject_ids=[0, 50, 100], channel_idx=5)
+
+# %%
+def plot_average_spectrograms(X, y, n_subjects_show=6):
+    """
+    Plot average spectrograms per subject to show subject-specific patterns
+    """
+    print("\n" + "=" * 60)
+    print("AVERAGE SPECTROGRAMS PER SUBJECT")
+    print("=" * 60)
+    
+    # Select subjects with enough samples
+    unique_subjects = np.unique(y)
+    np.random.seed(42)
+    selected_subjects = np.random.choice(unique_subjects, 
+                                          size=min(n_subjects_show, len(unique_subjects)), 
+                                          replace=False)
+    selected_subjects.sort()
+    
+    n_cols = 3
+    n_rows = (len(selected_subjects) + n_cols - 1) // n_cols
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(15, 4*n_rows))
+    axes = axes.flatten()
+    
+    for idx, subject_id in enumerate(selected_subjects):
+        # Get all samples for this subject
+        subject_mask = y == subject_id
+        subject_data = X[subject_mask]
+        
+        # Average spectrogram across all segments and channels
+        avg_spectrogram = np.zeros((33, 9))  # Will accumulate
+        count = 0
+        
+        for segment in subject_data[:20]:  # Use max 20 segments
+            for ch in range(min(5, N_CHANNELS)):  # Average over channels
+                f, t, Sxx = compute_spectrogram(segment[ch], SAMPLING_RATE)
+                if Sxx.shape == avg_spectrogram.shape:
+                    avg_spectrogram += Sxx
+                    count += 1
+        
+        if count > 0:
+            avg_spectrogram /= count
+        
+        # Plot
+        im = axes[idx].pcolormesh(t, f, 10 * np.log10(avg_spectrogram + 1e-10),
+                                   shading='gouraud', cmap='magma')
+        axes[idx].set_title(f'Subject {subject_id + 1}', fontsize=11)
+        axes[idx].set_xlabel('Time (s)', fontsize=9)
+        axes[idx].set_ylabel('Frequency (Hz)', fontsize=9)
+        axes[idx].set_ylim([0, 45])
+    
+    # Hide empty subplots
+    for idx in range(len(selected_subjects), len(axes)):
+        axes[idx].set_visible(False)
+    
+    plt.suptitle('Average Spectrograms by Subject (Motor Cortex Channels)', fontsize=14, y=1.02)
+    plt.tight_layout()
+    plt.savefig(os.path.join(VIZ_DIR, 'avg_spectrograms.png'), dpi=150, bbox_inches='tight')
+    plt.show()
+    
+    print(f"Plot saved to {VIZ_DIR}/avg_spectrograms.png")
+
+plot_average_spectrograms(X_test, y_test, n_subjects_show=9)
+
+# %% [markdown]
+# ## 5. t-SNE Feature Embedding Visualization
+
+# %%
+def extract_features(model, X, batch_size=64):
+    """
+    Extract deep features from the trained model
+    """
+    model.eval()
+    features = []
+    
+    n_samples = len(X)
+    n_batches = (n_samples + batch_size - 1) // batch_size
+    
+    with torch.no_grad():
+        for i in tqdm(range(n_batches), desc="Extracting features"):
+            start_idx = i * batch_size
+            end_idx = min((i + 1) * batch_size, n_samples)
+            
+            batch = torch.FloatTensor(X[start_idx:end_idx]).to(device)
+            batch_features = model.get_features(batch)
+            features.append(batch_features.cpu().numpy())
+    
+    return np.concatenate(features, axis=0)
+
+# Extract features
+print("=" * 60)
+print("EXTRACTING DEEP FEATURES")
+print("=" * 60)
+
+# Use a subset for faster computation
+max_samples = 5000
+if len(X_test) > max_samples:
+    np.random.seed(42)
+    indices = np.random.choice(len(X_test), max_samples, replace=False)
+    X_subset = X_test[indices]
+    y_subset = y_test[indices]
+else:
+    X_subset = X_test
+    y_subset = y_test
+
+features = extract_features(model, X_subset)
+print(f"Feature shape: {features.shape}")
+
+# %%
+def plot_tsne(features, labels, n_components=2, perplexity=30, n_iter=1000):
+    """
+    Visualize features using t-SNE
+    """
+    print("\n" + "=" * 60)
+    print("t-SNE VISUALIZATION")
+    print("=" * 60)
+    
+    print(f"Running t-SNE on {len(features)} samples...")
+    print(f"Parameters: perplexity={perplexity}, n_iter={n_iter}")
+    
+    # First reduce with PCA if features are high-dimensional
+    if features.shape[1] > 50:
+        print("Applying PCA reduction first...")
+        pca = PCA(n_components=50)
+        features_pca = pca.fit_transform(features)
+        print(f"PCA variance explained: {sum(pca.explained_variance_ratio_)*100:.1f}%")
+    else:
+        features_pca = features
+    
+    # Apply t-SNE
+    tsne = TSNE(n_components=n_components, perplexity=perplexity, 
+                n_iter=n_iter, random_state=42, verbose=1)
+    features_tsne = tsne.fit_transform(features_pca)
+    
+    print(f"t-SNE complete! Output shape: {features_tsne.shape}")
+    
+    # Plot
+    fig, axes = plt.subplots(1, 2, figsize=(16, 7))
+    
+    # Plot 1: All subjects colored
+    n_subjects = len(np.unique(labels))
+    colors = plt.cm.nipy_spectral(np.linspace(0, 1, n_subjects))
+    
+    for subject_id in np.unique(labels):
+        mask = labels == subject_id
+        axes[0].scatter(features_tsne[mask, 0], features_tsne[mask, 1],
+                       c=[colors[subject_id]], alpha=0.5, s=10, label=f'S{subject_id+1}')
+    
+    axes[0].set_title('t-SNE: All Subjects', fontsize=12)
+    axes[0].set_xlabel('t-SNE Dimension 1')
+    axes[0].set_ylabel('t-SNE Dimension 2')
+    
+    # Plot 2: Highlight specific subjects
+    highlight_subjects = [0, 25, 50, 75, 100]
+    highlight_subjects = [s for s in highlight_subjects if s in np.unique(labels)]
+    
+    # Plot all in gray
+    axes[1].scatter(features_tsne[:, 0], features_tsne[:, 1],
+                   c='lightgray', alpha=0.3, s=10, label='Other')
+    
+    # Highlight selected subjects
+    highlight_colors = ['red', 'blue', 'green', 'orange', 'purple']
+    for i, subject_id in enumerate(highlight_subjects):
+        mask = labels == subject_id
+        axes[1].scatter(features_tsne[mask, 0], features_tsne[mask, 1],
+                       c=highlight_colors[i], alpha=0.8, s=30, 
+                       label=f'Subject {subject_id+1}')
+    
+    axes[1].set_title('t-SNE: Highlighted Subjects', fontsize=12)
+    axes[1].set_xlabel('t-SNE Dimension 1')
+    axes[1].set_ylabel('t-SNE Dimension 2')
+    axes[1].legend(loc='upper right')
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(VIZ_DIR, 'tsne_embeddings.png'), dpi=150, bbox_inches='tight')
+    plt.show()
+    
+    print(f"Plot saved to {VIZ_DIR}/tsne_embeddings.png")
+    
+    return features_tsne
+
+features_tsne = plot_tsne(features, y_subset, perplexity=30, n_iter=1000)
+
+# %%
+def plot_tsne_quality_analysis(features_tsne, labels):
+    """
+    Analyze the quality of t-SNE clustering
+    """
+    print("\n" + "=" * 60)
+    print("t-SNE CLUSTER QUALITY ANALYSIS")
+    print("=" * 60)
+    
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    
+    # Calculate cluster centroids
+    unique_labels = np.unique(labels)
+    centroids = []
+    spreads = []
+    
+    for label in unique_labels:
+        mask = labels == label
+        points = features_tsne[mask]
+        centroid = np.mean(points, axis=0)
+        spread = np.mean(np.linalg.norm(points - centroid, axis=1))
+        centroids.append(centroid)
+        spreads.append(spread)
+    
+    centroids = np.array(centroids)
+    spreads = np.array(spreads)
+    
+    # Plot 1: Cluster spread distribution
+    axes[0].hist(spreads, bins=20, color='steelblue', edgecolor='black', alpha=0.7)
+    axes[0].axvline(np.mean(spreads), color='red', linestyle='--', 
+                    label=f'Mean: {np.mean(spreads):.2f}')
+    axes[0].set_title('Distribution of Cluster Spreads')
+    axes[0].set_xlabel('Cluster Spread (distance from centroid)')
+    axes[0].set_ylabel('Number of Subjects')
+    axes[0].legend()
+    
+    # Plot 2: Cluster separation analysis
+    # Calculate inter-cluster distances
+    from scipy.spatial.distance import pdist
+    inter_cluster_dist = pdist(centroids)
+    
+    axes[1].hist(inter_cluster_dist, bins=30, color='coral', edgecolor='black', alpha=0.7)
+    axes[1].axvline(np.mean(inter_cluster_dist), color='red', linestyle='--',
+                    label=f'Mean: {np.mean(inter_cluster_dist):.2f}')
+    axes[1].set_title('Distribution of Inter-Cluster Distances')
+    axes[1].set_xlabel('Distance Between Cluster Centroids')
+    axes[1].set_ylabel('Count')
+    axes[1].legend()
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(VIZ_DIR, 'tsne_quality.png'), dpi=150, bbox_inches='tight')
+    plt.show()
+    
+    # Print statistics
+    print(f"\nCluster Quality Metrics:")
+    print(f"  - Mean intra-cluster spread: {np.mean(spreads):.4f}")
+    print(f"  - Mean inter-cluster distance: {np.mean(inter_cluster_dist):.4f}")
+    print(f"  - Separation ratio: {np.mean(inter_cluster_dist)/np.mean(spreads):.4f}")
+    print(f"    (Higher is better - indicates well-separated clusters)")
+
+plot_tsne_quality_analysis(features_tsne, y_subset)
+
+# %% [markdown]
+# ## 6. CNN Feature Maps Visualization
+
+# %%
+def visualize_cnn_features(model, X, sample_indices=[0, 1, 2]):
+    """
+    Visualize intermediate CNN feature maps
+    """
+    print("\n" + "=" * 60)
+    print("CNN FEATURE MAPS VISUALIZATION")
+    print("=" * 60)
+    
+    model.eval()
+    
+    # Get activations from each CNN layer
+    def get_activation(name, activations):
+        def hook(model, input, output):
+            activations[name] = output.detach().cpu().numpy()
+        return hook
+    
+    # Register hooks for each layer
+    activations = {}
+    hooks = []
+    
+    for i, layer in enumerate(model.cnn_layers):
+        if isinstance(layer, nn.Conv1d):
+            hook = layer.register_forward_hook(get_activation(f'conv_{i}', activations))
+            hooks.append(hook)
+    
+    # Process samples
+    for sample_idx in sample_indices:
+        subject_id = y_subset[sample_idx]
+        sample = torch.FloatTensor(X[sample_idx:sample_idx+1]).to(device)
+        
+        # Forward pass to get activations
+        with torch.no_grad():
+            _ = model(sample)
+        
+        # Plot
+        n_layers = len(activations)
+        fig, axes = plt.subplots(1, n_layers + 1, figsize=(16, 4))
+        
+        # Original input
+        time = np.arange(X.shape[2]) / SAMPLING_RATE
+        for ch in range(min(5, X.shape[1])):
+            axes[0].plot(time, X[sample_idx, ch] + ch*2, linewidth=0.8)
+        axes[0].set_title(f'Input (Subject {subject_id+1})')
+        axes[0].set_xlabel('Time (s)')
+        
+        # Feature maps
+        for idx, (name, activation) in enumerate(activations.items()):
+            act = activation[0]  # First sample in batch
+            # Show subset of filters
+            n_filters_show = min(16, act.shape[0])
+            im = axes[idx+1].imshow(act[:n_filters_show], aspect='auto', cmap='viridis')
+            axes[idx+1].set_title(f'{name} Features')
+            axes[idx+1].set_xlabel('Time Steps')
+            axes[idx+1].set_ylabel('Filter')
+        
+        plt.suptitle(f'CNN Feature Maps - Subject {subject_id+1}', fontsize=12)
+        plt.tight_layout()
+        plt.savefig(os.path.join(VIZ_DIR, f'cnn_features_sample_{sample_idx}.png'), 
+                   dpi=150, bbox_inches='tight')
+        plt.show()
+    
+    # Remove hooks
+    for hook in hooks:
+        hook.remove()
+    
+    print(f"Feature maps saved to {VIZ_DIR}/")
+
+visualize_cnn_features(model, X_subset, sample_indices=[0, 50, 100])
+
+# %% [markdown]
+# ## 7. Power Spectrum Analysis
+
+# %%
+def plot_power_spectrum_by_subject(X, y, subject_ids=[0, 50, 100]):
+    """
+    Plot average power spectrum for different subjects
+    """
+    print("\n" + "=" * 60)
+    print("POWER SPECTRUM ANALYSIS")
+    print("=" * 60)
+    
+    fig, ax = plt.subplots(1, 1, figsize=(12, 6))
+    
+    colors = plt.cm.tab10(np.linspace(0, 1, len(subject_ids)))
+    
+    for idx, subject_id in enumerate(subject_ids):
+        # Get all samples for this subject
+        subject_mask = y == subject_id
+        subject_data = X[subject_mask]
+        
+        # Calculate average power spectrum
+        all_psd = []
+        for segment in subject_data[:50]:  # Use max 50 segments
+            for ch in range(min(5, N_CHANNELS)):
+                freqs, psd = signal.welch(segment[ch], fs=SAMPLING_RATE, nperseg=128)
+                all_psd.append(psd)
+        
+        avg_psd = np.mean(all_psd, axis=0)
+        
+        ax.semilogy(freqs, avg_psd, color=colors[idx], linewidth=2, 
+                   label=f'Subject {subject_id+1}')
+    
+    ax.set_xlabel('Frequency (Hz)', fontsize=12)
+    ax.set_ylabel('Power Spectral Density', fontsize=12)
+    ax.set_title('Average Power Spectrum by Subject', fontsize=14)
+    ax.set_xlim([0, 50])
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    
+    # Mark EEG frequency bands
+    bands = {'Delta': (0.5, 4), 'Theta': (4, 8), 'Alpha': (8, 13), 
+             'Beta': (13, 30), 'Gamma': (30, 50)}
+    
+    for band_name, (low, high) in bands.items():
+        ax.axvspan(low, high, alpha=0.1)
+        ax.text((low + high) / 2, ax.get_ylim()[1] * 0.5, band_name, 
+               ha='center', fontsize=9, rotation=90, alpha=0.7)
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(VIZ_DIR, 'power_spectrum.png'), dpi=150, bbox_inches='tight')
+    plt.show()
+    
+    print(f"Plot saved to {VIZ_DIR}/power_spectrum.png")
+
+plot_power_spectrum_by_subject(X_subset, y_subset, subject_ids=[0, 25, 50, 75, 100])
+
+# %% [markdown]
+# ## 8. Summary
+
+# %%
+print("=" * 60)
+print("NOTEBOOK 4 COMPLETE - VISUALIZATIONS GENERATED")
+print("=" * 60)
+print(f"""
+Generated Visualizations:
+
+1. EEG Signals
+   - {VIZ_DIR}/eeg_signals.png
+
+2. Spectrograms
+   - {VIZ_DIR}/spectrograms.png
+   - {VIZ_DIR}/avg_spectrograms.png
+
+3. t-SNE Feature Embeddings
+   - {VIZ_DIR}/tsne_embeddings.png
+   - {VIZ_DIR}/tsne_quality.png
+
+4. CNN Feature Maps
+   - {VIZ_DIR}/cnn_features_sample_*.png
+
+5. Power Spectrum Analysis
+   - {VIZ_DIR}/power_spectrum.png
+
+All files saved in: {VIZ_DIR}
+""")
+
+# List all generated files
+print("\nGenerated files:")
+for filename in sorted(os.listdir(VIZ_DIR)):
+    filepath = os.path.join(VIZ_DIR, filename)
+    size_kb = os.path.getsize(filepath) / 1024
+    print(f"  - {filename}: {size_kb:.1f} KB")
