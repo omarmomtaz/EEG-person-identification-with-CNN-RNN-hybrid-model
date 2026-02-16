@@ -225,18 +225,6 @@ shutil.copytree('/content/report', '/content/drive/MyDrive/EEG_Project/report')
 
 ---
 
-## 👥 Team Submission Checklist
-
-- [ ] Notebook 1: Preprocessing (loading, filtering, segmenting EEG)
-- [ ] Notebook 2: CNN + RNN model (training and evaluation)  
-- [ ] Notebook 3: Performance report including:
-  - [ ] Confusion matrix
-  - [ ] Accuracy and F1-score
-  - [ ] Discussion of model performance
-- [ ] Notebook 4: (Optional) Visualization of spectrograms or t-SNE
-
----
-
 ## 📝 License
 
 This project uses the PhysioNet EEG Motor Movement/Imagery Dataset, which is available under the PhysioNet Credentialed Health Data License.
