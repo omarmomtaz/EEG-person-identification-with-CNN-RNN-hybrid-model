@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 [![Dataset: PhysioNet](https://img.shields.io/badge/Dataset-PhysioNet-blue?style=for-the-badge)](https://physionet.org/content/eegmmidb/1.0.0/)
 
-**99.87% Accuracy | CNN-GRU Hybrid Model for Biometric EEG Identification**
+**99.89% Accuracy | CNN-GRU Hybrid Model for Biometric EEG Identification**
 
 Built a state-of-the-art deep learning system to identify 109 individuals from EEG signals during motor imagery tasks. **This has huge potential for secure biometrics, personalized BCIs, helping paralyzed people control devices with thoughts, neurological research, and more.**
 
