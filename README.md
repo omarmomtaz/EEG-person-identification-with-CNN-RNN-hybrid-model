@@ -40,15 +40,15 @@ A **production-ready CNN-GRU hybrid deep learning system** that identifies indiv
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│              CLASSIFICATION METRICS                      │
+│              CLASSIFICATION METRICS                     │
 ├─────────────────────────────────────────────────────────┤
 │  ✓ Accuracy (Top-1):          99.89%                    │
-│  ✓ Top-3 Accuracy:             99.96%                    │
-│  ✓ Top-5 Accuracy:             99.98%                    │
-│  ✓ F1 Score (Weighted):        0.9989                    │
-│  ✓ Inference Time:             15ms per sample           │
-│  ✓ Model Parameters:           661,613                   │
-│  ✓ Training Time:              93 minutes (single GPU)   │
+│  ✓ Top-3 Accuracy:             99.96%                   │
+│  ✓ Top-5 Accuracy:             99.98%                   │
+│  ✓ F1 Score (Weighted):        0.9989                   │
+│  ✓ Inference Time:             15ms per sample          │
+│  ✓ Model Parameters:           661,613                  │
+│  ✓ Training Time:              93 minutes (single GPU)  │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -604,7 +604,7 @@ I'm available for freelance projects in:
 
 📧 **Email:** omarmomtaz.main@gmail.com.com  
 💼 **LinkedIn:** [linkedin.com/in/yourprofile](https://www.linkedin.com/in/omar-momtaz-/)  
-🐙 **GitHub:** [github.com/yourusername]((https://github.com/omarmomtaz))
+🐙 **GitHub:** [github.com/yourusername](https://github.com/omarmomtaz)
 
 ---
 
@@ -641,9 +641,9 @@ This project is released under the **MIT License**. You are free to use, modify,
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/github/stars/yourusername/eeg-identification?style=social" alt="GitHub stars">
-  <img src="https://img.shields.io/github/forks/yourusername/eeg-identification?style=social" alt="GitHub forks">
-  <img src="https://img.shields.io/github/watchers/yourusername/eeg-identification?style=social" alt="GitHub watchers">
+  <img src="https://img.shields.io/github/stars/omarmomtaz/EEG-person-identification-with-CNN-RNN-hybrid-model?style=social" alt="GitHub stars">
+  <img src="https://img.shields.io/github/forks/omarmomtaz/EEG-person-identification-with-CNN-RNN-hybrid-model?style=social" alt="GitHub forks">
+  <img src="https://img.shields.io/github/watchers/omarmomtaz/EEG-person-identification-with-CNN-RNN-hybrid-model?style=social" alt="GitHub watchers">
 </p>
 
 ---
