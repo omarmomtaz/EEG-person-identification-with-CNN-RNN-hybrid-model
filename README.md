@@ -603,8 +603,8 @@ I'm available for freelance projects in:
 ### **Contact Me:**
 
 📧 **Email:** omarmomtaz.main@gmail.com.com  
-💼 **LinkedIn:** [linkedin.com/in/yourprofile](https://www.linkedin.com/in/omar-momtaz-/)  
-🐙 **GitHub:** [github.com/yourusername](https://github.com/omarmomtaz)
+💼 **LinkedIn:** (https://www.linkedin.com/in/omar-momtaz-/)  
+🐙 **GitHub:** (https://github.com/omarmomtaz)
 
 ---
 
