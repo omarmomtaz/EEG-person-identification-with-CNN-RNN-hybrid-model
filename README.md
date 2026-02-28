@@ -61,7 +61,7 @@ A **production-ready CNN-GRU hybrid deep learning system** that identifies indiv
 ### 1️⃣ Confusion Matrix: Near-Perfect Identification
 
 <p align="center">
-  <img src="reports/confusion_matrix.png" alt="Confusion Matrix" width="100%">
+  <img src="Visualizations/Normalized Confusion Matrix.png" alt="Confusion Matrix" width="100%">
   <br>
   <em>Left: Normalized confusion matrix showing 99.89% diagonal accuracy across all 109 subjects.</em><br>
   <em>Right: Per-subject classification accuracy—71 subjects achieve 100% accuracy.</em>
@@ -74,7 +74,7 @@ A **production-ready CNN-GRU hybrid deep learning system** that identifies indiv
 ### 2️⃣ Training History: Convergence Without Overfitting
 
 <p align="center">
-  <img src="models/training_history.png" alt="Training Curves" width="100%">
+  <img src="Visualizations/Training Analysis.png" alt="Training Curves" width="100%">
   <br>
   <em>Training and validation metrics over 32 epochs—minimal overfitting with proper regularization.</em>
 </p>
@@ -89,7 +89,7 @@ A **production-ready CNN-GRU hybrid deep learning system** that identifies indiv
 ### 3️⃣ F1 Score Distribution: Balanced Performance
 
 <p align="center">
-  <img src="reports/f1_analysis.png" alt="F1 Score Analysis" width="100%">
+  <img src="Visualizations/PER-CLASS F1 SCORE ANALYSIS.png" alt="F1 Score Analysis" width="100%">
   <br>
   <em>F1 score distribution and precision-recall analysis showing consistent performance across all subjects.</em>
 </p>
@@ -104,7 +104,7 @@ A **production-ready CNN-GRU hybrid deep learning system** that identifies indiv
 ### 4️⃣ t-SNE Feature Embeddings: Distinct Brain Fingerprints
 
 <p align="center">
-  <img src="visualizations/tsne_embeddings.png" alt="t-SNE Visualization" width="100%">
+  <img src="Visualizations/t-SNE CLUSTER QUALITY ANALYSIS.png" alt="t-SNE Visualization" width="100%">
   <br>
   <em>2D projection of 256-dimensional GRU hidden states—each color represents a different subject.</em>
 </p>
@@ -119,7 +119,7 @@ A **production-ready CNN-GRU hybrid deep learning system** that identifies indiv
 ### 5️⃣ Spectrograms: Unique Neural Signatures
 
 <p align="center">
-  <img src="visualizations/spectrograms.png" alt="EEG Spectrograms" width="100%">
+  <img src="Visualizations/SPECTROGRAM VISUALIZATION.png" alt="EEG Spectrograms" width="100%">
   <br>
   <em>Time-frequency analysis showing subject-specific patterns in motor cortex EEG.</em>
 </p>
@@ -138,7 +138,7 @@ Each person has a unique "frequency fingerprint"—the model learns to recognize
 ### 6️⃣ Average Spectrograms Per Subject
 
 <p align="center">
-  <img src="visualizations/avg_spectrograms.png" alt="Average Spectrograms" width="100%">
+  <img src="Visualizations/AVERAGE SPECTROGRAMS PER SUBJECT.png" alt="Average Spectrograms" width="100%">
   <br>
   <em>Average spectrograms across 9 subjects—notice the distinct patterns despite same task.</em>
 </p>
@@ -150,7 +150,7 @@ Each person has a unique "frequency fingerprint"—the model learns to recognize
 ### 7️⃣ Error Analysis: Understanding Failures
 
 <p align="center">
-  <img src="reports/error_analysis.png" alt="Error Analysis" width="100%">
+  <img src="Visualizations/Error Analysis.png" alt="Error Analysis" width="100%">
   <br>
   <em>Left: Confidence distribution—model is more uncertain on errors.</em><br>
   <em>Right: Most common confusion pairs (adjacent subject IDs due to recording session effects).</em>
@@ -167,7 +167,7 @@ Each person has a unique "frequency fingerprint"—the model learns to recognize
 ### 8️⃣ Power Spectrum Analysis: Frequency Domain Identity
 
 <p align="center">
-  <img src="visualizations/power_spectrum.png" alt="Power Spectrum" width="100%">
+  <img src="Visualizations/POWER SPECTRUM ANALYSIS.png" alt="Power Spectrum" width="100%">
   <br>
   <em>Average power spectral density for 5 subjects—alpha and beta bands show clear differentiation.</em>
 </p>
